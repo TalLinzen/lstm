@@ -58,23 +58,29 @@ local params = {batch_size=20,
 -- Training parameters for British National Corpus (identical to 1h
 -- params above, except rnn_size=600 and vocab_size=50000)
 local params = {batch_size=20,
-  seq_lenth=20,
+  seq_length=20,
   layers=2,
   decay=2,
-  rnn_size=600,
+  rnn_size=6,
   dropout=0,
   init_weight=0.1,
   lr=1,
   vocab_size=50000,
   max_epoch=4,
-  max_max_epoch=13,
-  max_grad_norm=5}
+  max_max_epoch=0.1,
+  max_grad_norm=5,
+  training_file='data/bnc_dump_5M'}
 
 local function transfer_data(x)
   return x:cuda()
 end
 
-local state_train, state_valid, state_test
+state_train = {data=transfer_data(ptb.traindataset(params.batch_size))}
+state_valid =  {data=transfer_data(ptb.validdataset(params.batch_size))}
+state_test =  {data=transfer_data(ptb.testdataset(params.batch_size))}
+
+
+--local state_train, state_valid, state_test
 local model = {}
 local paramx, paramdx
 
@@ -220,24 +226,27 @@ local function run_valid()
   g_enable_dropout(model.rnns)
 end
 
-local function run_test()
+function run_test(model)
   reset_state(state_test)
   g_disable_dropout(model.rnns)
   local perp = 0
   local len = state_test.data:size(1)
   g_replace_table(model.s[0], model.start_s)
+  perps = torch.zeros(len - 1)
   for i = 1, (len - 1) do
     local x = state_test.data[i]
     local y = state_test.data[i + 1]
     perp_tmp, model.s[1] = unpack(model.rnns[1]:forward({x, y, model.s[0]}))
     perp = perp + perp_tmp[1]
+    perps[i] = perp_tmp[1]
     g_replace_table(model.s[0], model.s[1])
   end
   print("Test set perplexity : " .. g_f3(torch.exp(perp / (len - 1))))
   g_enable_dropout(model.rnns)
+  return(perps)
 end
 
-local function main()
+function train(output_file)
   g_init_gpu(arg)
   state_train = {data=transfer_data(ptb.traindataset(params.batch_size))}
   state_valid =  {data=transfer_data(ptb.validdataset(params.batch_size))}
@@ -290,5 +299,26 @@ local function main()
     end
   end
   run_test()
+  torch.save(output_file, model)
   print("Training is over.")
 end
+
+function load_training()
+  load_data(params.training_file)
+end
+
+function process_string(mdl, str)
+  words = stringx.split(str)
+  str = load_string(str)
+  str = str:resize(str:size(1), 1):expand(str:size(1), params.batch_size)
+  str = str:cuda()
+  state_test.data = str
+  local surprisals = run_test(mdl) 
+  local res = ''
+  for i = 1, surprisals:size(1) do
+    res = res .. string.format('%5d %-10s %5.2f\n', str[i + 1][1],
+       words[i + 1], surprisals[i])
+  end
+  return res
+end
+

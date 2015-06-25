@@ -27,8 +27,12 @@ local function replicate(x_inp, batch_size)
    return x
 end
 
-local function load_data(fname)
+function load_data(fname)
    local data = file.read(fname)
+   return load_string(data)
+end
+
+function load_string(data)
    data = stringx.replace(data, '\n', '<eos>')
    data = stringx.split(data)
    print(string.format("Loading %s, size of data = %d", fname, #data))
@@ -44,7 +48,8 @@ local function load_data(fname)
 end
 
 local function traindataset(batch_size)
-   local x = load_data(ptb_path .. "ptb.train.txt")
+   local x = load_data('data/bnc_dump_5M')
+   --local x = load_data('data/ptb.train.txt')
    x = replicate(x, batch_size)
    return x
 end
