@@ -41,7 +41,7 @@ local params = {batch_size=20,
                ]]--
 
 -- Trains 1h and gives test 115 perplexity.
-local params = {batch_size=20,
+--[[local params = {batch_size=20,
                 seq_length=20,
                 layers=2,
                 decay=2,
@@ -53,6 +53,22 @@ local params = {batch_size=20,
                 max_epoch=4,
                 max_max_epoch=13,
                 max_grad_norm=5}
+                ]]--
+
+-- Training parameters for British National Corpus (identical to 1h
+-- params above, except rnn_size=600 and vocab_size=50000)
+local params = {batch_size=20,
+  seq_lenth=20,
+  layers=2,
+  decay=2,
+  rnn_size=600,
+  dropout=0,
+  init_weight=0.1,
+  lr=1,
+  vocab_size=50000,
+  max_epoch=4,
+  max_max_epoch=13,
+  max_grad_norm=5}
 
 local function transfer_data(x)
   return x:cuda()
