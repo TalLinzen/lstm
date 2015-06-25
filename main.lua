@@ -61,13 +61,13 @@ local params = {batch_size=20,
   seq_length=20,
   layers=2,
   decay=2,
-  rnn_size=6,
+  rnn_size=600,
   dropout=0,
   init_weight=0.1,
   lr=1,
   vocab_size=50000,
   max_epoch=4,
-  max_max_epoch=0.1,
+  max_max_epoch=13,
   max_grad_norm=5,
   training_file='data/bnc_dump_5M'}
 
@@ -298,7 +298,7 @@ function train(output_file)
       collectgarbage()
     end
   end
-  run_test()
+  run_test(model)
   torch.save(output_file, model)
   print("Training is over.")
 end
