@@ -292,5 +292,3 @@ local function main()
   run_test()
   print("Training is over.")
 end
-
-main()
