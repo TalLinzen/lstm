@@ -21,7 +21,7 @@ else
     LookupTable = nn.LookupTable
 end
 require('nngraph')
-require('base')
+dofile('base.lua')
 local ptb = require('data')
 
 -- Train 1 day and gives 82 perplexity.
