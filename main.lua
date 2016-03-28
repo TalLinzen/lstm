@@ -116,7 +116,7 @@ local function reset_ds()
 	end
 end
 
-local function fp(state)
+local function forward_pass(state)
 	g_replace_table(model.s[0], model.start_s)
 	if state.pos + params.seq_length > state.data:size(1) then
 		reset_state(state)
@@ -132,7 +132,7 @@ local function fp(state)
 	return model.err:mean()
 end
 
-local function bp(state)
+local function backward_pass(state)
 	paramdx:zero()
 	reset_ds()
 	for i = params.seq_length, 1, -1 do
@@ -214,17 +214,25 @@ function main()
 	local words_per_step = params.seq_length * params.batch_size
 	local epoch_size = torch.floor(state_train.data:size(1) / params.seq_length)
 	local perps
+
 	while epoch < params.n_epochs do
-		local perp = fp(state_train)
+		local perp = forward_pass(state_train)
 		if perps == nil then
 			perps = torch.zeros(epoch_size):add(perp)
 		end
 		perps[step % epoch_size + 1] = perp
 		step = step + 1
-		bp(state_train)
+		backward_pass(state_train)
 		total_cases = total_cases + params.seq_length * params.batch_size
 		epoch = step / epoch_size
 		xlua.progress(step % epoch_size, epoch_size)
+
+		if step % 33 == 0 then
+			cutorch.synchronize()
+			collectgarbage()
+		end
+
+        -- End-of-epoch bookkeeping
 		if step % epoch_size == 0 then
 			local wps = torch.floor(total_cases / torch.toc(start_time))
 			local since_beginning = g_d(torch.toc(beginning_time) / 60)
@@ -246,10 +254,6 @@ function main()
                 local filename = 'model_' .. torch.floor(epoch)
                 torch.save(paths.concat(params.save_dir, filename), save_state)
             end
-		end
-		if step % 33 == 0 then
-			cutorch.synchronize()
-			collectgarbage()
 		end
 	end
 	run_test()
