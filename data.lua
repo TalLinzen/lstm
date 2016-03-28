@@ -43,26 +43,20 @@ local function load_data(fname)
    return x
 end
 
-local function traindataset(batch_size)
-   local x = load_data(ptb_path .. "ptb.train.txt")
-   x = replicate(x, batch_size)
-   return x
-end
+function load_datasets(params)
+    local path = paths.concat('./data/', params.dataset)
+    local train = load_data(paths.concat(path, "train.txt"))
+    local valid = load_data(paths.concat(path, "valid.txt"))
+    local test = load_data(paths.concat(path, "test.txt"))
 
--- Intentionally we repeat dimensions without offseting.
--- Pass over this batch corresponds to the fully sequential processing.
-local function testdataset(batch_size)
-   local x = load_data(ptb_path .. "ptb.test.txt")
-   x = x:resize(x:size(1), 1):expand(x:size(1), batch_size)
-   return x
-end
+    res = {}
+    res.train = replicate(train, params.batch_size)
+    res.valid = replicate(valid, params.batch_size)
 
-local function validdataset(batch_size)
-   local x = load_data(ptb_path .. "ptb.valid.txt")
-   x = replicate(x, batch_size)
-   return x
-end
+    -- Original comment from Zaremba:
+    -- Intentionally we repeat dimensions without offseting.
+    -- Pass over this batch corresponds to the fully sequential processing.
+    res.test = test:resize(test:size(1), 1):expand(test:size(1), params.batch_size)
 
-return {traindataset=traindataset,
-        testdataset=testdataset,
-        validdataset=validdataset}
+    return res
+end

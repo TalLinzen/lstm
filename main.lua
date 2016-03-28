@@ -19,11 +19,7 @@ print('Cuda compute capability: ' .. cudaComputeCapability)
 local options = RNNOption()
 local params = options:parse(arg)
 params.vocab_size = 10000
-local ptb = require('data')
-
-local function transfer_data(x)
-	return x:cuda()
-end
+local data = require('data')
 
 local state_train, state_valid, state_test
 local model = {}
@@ -198,9 +194,10 @@ function main()
        print('*** models will be saved after each epoch ***')
     end
 
-	state_train = {data=transfer_data(ptb.traindataset(params.batch_size))}
-	state_valid = {data=transfer_data(ptb.validdataset(params.batch_size))}
-	state_test = {data=transfer_data(ptb.testdataset(params.batch_size))}
+    datasets = load_datasets(params)
+	state_train = {data=datasets.train:cuda()}
+	state_valid = {data=datasets.valid:cuda()}
+	state_test = {data=datasets.test:cuda()}
 	print("Network parameters:")
 	print(params)
 	local states = {state_train, state_valid, state_test}
@@ -242,6 +239,7 @@ function main()
 				params.learning_rate = params.learning_rate / params.learning_rate_decay
 			end
             if params.save_dir ~= nil then
+                print 'Saving model to disk'
                 local save_state = {}
                 save_state.learning_rate = learning_rate
                 save_state.learning_rate_decay = params.learning_rate_decay
