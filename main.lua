@@ -190,6 +190,14 @@ end
 
 function main()
 	g_init_gpu(arg)
+
+    if params.save_dir ~= nil then
+       if paths.dirp(params.save_dir) == false then
+           os.execute('mkdir -p ' .. params.save_dir)
+       end
+       print('*** models will be saved after each epoch ***')
+    end
+
 	state_train = {data=transfer_data(ptb.traindataset(params.batch_size))}
 	state_valid = {data=transfer_data(ptb.validdataset(params.batch_size))}
 	state_test = {data=transfer_data(ptb.testdataset(params.batch_size))}
@@ -231,8 +239,15 @@ function main()
 						', time elapsed = ' .. since_beginning .. ' mins.')
 			run_valid()
 			if epoch > params.n_epochs_before_decay then
-					params.learning_rate = params.learning_rate / params.learning_rate_decay
+				params.learning_rate = params.learning_rate / params.learning_rate_decay
 			end
+            if params.save_dir ~= nil then
+                local save_state = {}
+                save_state.learning_rate = learning_rate
+                save_state.learning_rate_decay = params.learning_rate_decay
+                local filename = 'model_' .. torch.floor(epoch)
+                torch.save(paths.concat(params.save_dir, filename), save_state)
+            end
 		end
 		if step % 33 == 0 then
 			cutorch.synchronize()

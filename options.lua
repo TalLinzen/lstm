@@ -177,8 +177,7 @@ function RNNOption:parse()
     end
 
     local mdir = 
-        'dset=' .. params.dataset
-        .. '_nepch=' .. params.n_epochs
+        'nepch=' .. params.n_epochs
         .. '_bsz=' .. params.batch_size
         .. '_init=' .. params.initial_weight
         .. '_layers=' .. params.layers
@@ -188,8 +187,7 @@ function RNNOption:parse()
         .. '_lr=' .. params.learning_rate
         .. '_grdnrm=' .. to_string(params.max_grad_norm)
 
-    local basedir = './output/'
-        .. params.dataset
+    local basedir = './output/' .. params.dataset
     if params.save == true then
         params.save_dir = paths.concat(basedir, mdir)
     else
