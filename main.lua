@@ -159,10 +159,9 @@ local function run_valid()
 	local len = (state_valid.data:size(1) - 1) / (params.seq_length)
 	local perp = 0
 	for i = 1, len do
-		perp = perp + fp(state_valid)
+		perp = perp + forward_pass(state_valid)
 	end
-	print("\n")
-	print("Validation set perplexity : " .. g_f3(torch.exp(perp / len)))
+	print("\nValidation set perplexity: " .. g_f3(torch.exp(perp / len)))
 	g_enable_dropout(model.rnns)
 end
 
@@ -204,9 +203,7 @@ function main()
 		reset_state(state)
 	end
 	setup()
-	local step = 0
 	local epoch = 0
-	local total_cases = 0
 	local beginning_time = torch.tic()
 	local start_time = torch.tic()
 	print("Starting training.")
@@ -215,45 +212,48 @@ function main()
 	local perps
 
 	while epoch < params.n_epochs do
-		local perp = forward_pass(state_train)
-		if perps == nil then
-			perps = torch.zeros(epoch_size):add(perp)
-		end
-		perps[step % epoch_size + 1] = perp
-		step = step + 1
-		backward_pass(state_train)
-		total_cases = total_cases + params.seq_length * params.batch_size
-		epoch = step / epoch_size
-		xlua.progress(step % epoch_size, epoch_size)
+        local step = 0
+        local total_cases = 0
+	    local epoch_start_time = torch.tic()
+        if epoch >= params.n_epochs_before_decay then
+            params.learning_rate = params.learning_rate / params.learning_rate_decay
+        end
+        while step < epoch_size do
+            local perp = forward_pass(state_train)
+            if perps == nil then
+                perps = torch.zeros(epoch_size):add(perp)
+            end
+            perps[step + 1] = perp
+            step = step + 1
+            backward_pass(state_train)
+            total_cases = total_cases + params.seq_length * params.batch_size
+            xlua.progress(step, epoch_size)
 
-		if step % 33 == 0 then
-			cutorch.synchronize()
-			collectgarbage()
-		end
+            if step % 33 == 0 then
+                cutorch.synchronize()
+                collectgarbage()
+            end
+        end
 
         -- End-of-epoch bookkeeping
-		if step % epoch_size == 0 then
-			local wps = torch.floor(total_cases / torch.toc(start_time))
-			local since_beginning = g_d(torch.toc(beginning_time) / 60)
-			print('epoch = ' .. torch.floor(epoch) ..
-						', training perplexity = ' .. g_f3(torch.exp(perps:mean())) ..
-						', word per second = ' .. wps ..
-						', dw:norm() = ' .. g_f3(model.norm_dw) ..
-						', learning_rate = ' ..  g_f3(params.learning_rate) ..
-						', time elapsed = ' .. since_beginning .. ' mins.')
-			run_valid()
-			if epoch > params.n_epochs_before_decay then
-				params.learning_rate = params.learning_rate / params.learning_rate_decay
-			end
-            if params.save_dir ~= nil then
-                print 'Saving model to disk'
-                local save_state = {}
-                save_state.learning_rate = learning_rate
-                save_state.learning_rate_decay = params.learning_rate_decay
-                local filename = 'model_' .. torch.floor(epoch)
-                torch.save(paths.concat(params.save_dir, filename), save_state)
-            end
-		end
+        local wps = torch.floor(total_cases / torch.toc(epoch_start_time))
+        local since_beginning = g_d(torch.toc(beginning_time) / 60)
+        print('epoch = ' .. epoch ..
+                    ', training perplexity = ' .. g_f3(torch.exp(perps:mean())) ..
+                    ', word per second = ' .. wps ..
+                    ', dw:norm() = ' .. g_f3(model.norm_dw) ..
+                    ', learning_rate = ' ..  g_f3(params.learning_rate) ..
+                    ', time elapsed = ' .. since_beginning .. ' mins.')
+        run_valid()
+        if params.save_dir ~= nil then
+            print 'Saving model to disk.\n'
+            local save_state = {}
+            save_state.learning_rate = learning_rate
+            save_state.learning_rate_decay = params.learning_rate_decay
+            local filename = 'model_' .. torch.floor(epoch)
+            torch.save(paths.concat(params.save_dir, filename), save_state)
+        end
+        epoch = epoch + 1
 	end
 	run_test()
 	print("Training is over.")
