@@ -18,7 +18,6 @@ print('Cuda compute capability: ' .. cudaComputeCapability)
 
 local options = RNNOption()
 params = options:parse(arg)
-params.vocab_size = 10000
 local data = require('data')
 
 local state_train, state_valid, state_test

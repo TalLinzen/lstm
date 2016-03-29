@@ -40,6 +40,9 @@ function RNNOption:__init()
     self:option('-nhid',
                 'n_hidden', 200,
                 'Number of hidden units')
+    self:option('-vocabsize',
+                'vocab_size', 10000,
+                'Vocabulary size')
     self:option('-nchunks',
                 'n_chunks', 1,
                 'Process data in multiple chunks to save memory')

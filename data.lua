@@ -28,18 +28,30 @@ function replicate(x_inp, batch_size)
 end
 
 local function load_data(fname)
-    local data = file.read(fname)
-    data = stringx.replace(data, '\n', '<eos>')
-    data = stringx.split(data)
-    print(string.format("Loading %s, size of data = %d", fname, #data))
-    local x = torch.zeros(#data)
-    for i = 1, #data do
-        if vocab_map[data[i]] == nil then
-            vocab_idx = vocab_idx + 1
-            vocab_map[data[i]] = vocab_idx
+    local word_count = 0
+    for line in io.lines(fname) do
+        local words = stringx.split(line)
+        for k = 1, #words do
+            if vocab_map[words[k]] == nil then
+                vocab_idx = vocab_idx + 1
+                vocab_map[words[k]] = vocab_idx
+            end
+            word_count = word_count + 1
         end
-        x[i] = vocab_map[data[i]]
     end
+
+    local x = torch.zeros(word_count)
+    local i = 1
+
+    for line in io.lines(fname) do
+        local words = stringx.split(line)
+        for k = 1, #words do
+            x[i] = vocab_map[words[k]]
+            i = i + 1
+        end
+    end
+
+    print('Loaded dataset ' .. fname .. ' (' .. word_count .. ' words)')
     return x
 end
 
