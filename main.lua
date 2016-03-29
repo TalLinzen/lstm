@@ -79,7 +79,6 @@ local function create_network()
 end
 
 local function setup()
-	print("Creating a RNN LSTM network.")
 	local core_network = create_network()
 	paramx, paramdx = core_network:getParameters()
 	model.s = {}
