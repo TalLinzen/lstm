@@ -17,7 +17,7 @@ cudaComputeCapability = deviceParams.major + deviceParams.minor / 10
 print('Cuda compute capability: ' .. cudaComputeCapability)
 
 local options = RNNOption()
-local params = options:parse(arg)
+params = options:parse(arg)
 params.vocab_size = 10000
 local data = require('data')
 
@@ -193,7 +193,7 @@ function main()
     end
 
     datasets = load_datasets(params)
-	state_train = {data=datasets.train:cuda()}
+	state_train = {}
 	state_valid = {data=datasets.valid:cuda()}
 	state_test = {data=datasets.test:cuda()}
 	print("Network parameters:")
@@ -208,17 +208,31 @@ function main()
 	local start_time = torch.tic()
 	print("Starting training.")
 	local words_per_step = params.seq_length * params.batch_size
-	local epoch_size = torch.floor(state_train.data:size(1) / params.seq_length)
+	local epoch_size = torch.floor(datasets.train:size(1) / words_per_step)
 	local perps
+    local chunk_size_in_batches = torch.floor(epoch_size / params.n_chunks)
+    local chunk_size_in_data = torch.floor(datasets.train:size(1) / params.n_chunks)
 
 	while epoch < params.n_epochs do
         local step = 0
         local total_cases = 0
 	    local epoch_start_time = torch.tic()
+        local chunk_index = 0
         if epoch >= params.n_epochs_before_decay then
             params.learning_rate = params.learning_rate / params.learning_rate_decay
         end
-        while step < epoch_size do
+        while chunk_index < params.n_chunks do
+            if step % chunk_size_in_batches == 0 then
+                local first = chunk_size_in_data * chunk_index + 1
+                local last = first + chunk_size_in_data
+                -- make last chunk slightly longer to include last few words
+                if datasets.train:size(1) - last < params.n_chunks then
+                    last = datasets.train:size(1)
+                end
+                local chunk = datasets.train[{{first, last}}]
+                state_train.data = replicate(chunk, params.batch_size):cuda()
+                chunk_index = chunk_index + 1
+            end
             local perp = forward_pass(state_train)
             if perps == nil then
                 perps = torch.zeros(epoch_size):add(perp)
@@ -246,7 +260,7 @@ function main()
                     ', time elapsed = ' .. since_beginning .. ' mins.')
         run_valid()
         if params.save_dir ~= nil then
-            print 'Saving model to disk.\n'
+            print 'Saving model to disk...\n'
             local save_state = {}
             save_state.learning_rate = learning_rate
             save_state.learning_rate_decay = params.learning_rate_decay
@@ -255,6 +269,7 @@ function main()
         end
         epoch = epoch + 1
 	end
+    print("Calculating test set perplexity...")
 	run_test()
 	print("Training is over.")
 end

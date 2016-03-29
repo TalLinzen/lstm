@@ -40,6 +40,9 @@ function RNNOption:__init()
     self:option('-nhid',
                 'n_hidden', 200,
                 'Number of hidden units')
+    self:option('-nchunks',
+                'n_chunks', 1,
+                'Process data in multiple chunks to save memory')
     self:option('-init',
                 'initial_weight', 0.1,
                 'Weights are initialized to Uniform [-x, x]')
