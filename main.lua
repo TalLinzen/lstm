@@ -191,10 +191,16 @@ function main()
        print('*** models will be saved after each epoch ***')
     end
 
-    datasets = load_datasets(params)
+    datasets = load_datasets(params.dataset)
 	state_train = {}
-	state_valid = {data=datasets.valid:cuda()}
-	state_test = {data=datasets.test:cuda()}
+    local valid = replicate(datasets.valid, params.batch_size)
+	state_valid = {data=valid:cuda()}
+    -- Original comment from Zaremba:
+    -- Intentionally we repeat dimensions without offseting.
+    -- Pass over this batch corresponds to the fully sequential processing.
+    local test = datasets.test
+    local test = test:resize(test:size(1), 1):expand(test:size(1), params.batch_size)
+	state_test = {data=test:cuda()}
 	print("Network parameters:")
 	print(params)
 	local states = {state_train, state_valid, state_test}

@@ -13,6 +13,7 @@ local data_path = "./data/"
 
 local vocab_idx = 0
 local vocab_map = {}
+word_freq = {}
 
 -- Stacks replicated, shifted versions of x_inp
 -- into a single matrix of size x_inp:size(1) x batch_size.
@@ -27,14 +28,18 @@ function replicate(x_inp, batch_size)
     return x
 end
 
-local function load_data(fname)
+local function load_data(fname, fixed_vocab)
     local word_count = 0
     for line in io.lines(fname) do
         local words = stringx.split(line)
         for k = 1, #words do
-            if vocab_map[words[k]] == nil then
-                vocab_idx = vocab_idx + 1
-                vocab_map[words[k]] = vocab_idx
+            if not fixed_vocab then
+                if vocab_map[words[k]] == nil then
+                    vocab_idx = vocab_idx + 1
+                    vocab_map[words[k]] = vocab_idx
+                    word_freq[words[k]] = 0
+                end
+                word_freq[words[k]] = word_freq[words[k]] + 1
             end
             word_count = word_count + 1
         end
@@ -55,20 +60,11 @@ local function load_data(fname)
     return x
 end
 
-function load_datasets(params)
-    local path = paths.concat(data_path, params.dataset)
-    local train = load_data(paths.concat(path, "train.txt"))
-    local valid = load_data(paths.concat(path, "valid.txt"))
-    local test = load_data(paths.concat(path, "test.txt"))
-
+function load_datasets(dataset)
+    local path = paths.concat(data_path, dataset)
     res = {}
-    res.train = train
-    res.valid = replicate(valid, params.batch_size)
-
-    -- Original comment from Zaremba:
-    -- Intentionally we repeat dimensions without offseting.
-    -- Pass over this batch corresponds to the fully sequential processing.
-    res.test = test:resize(test:size(1), 1):expand(test:size(1), params.batch_size)
-
+    res.train = load_data(paths.concat(path, "train.txt"))
+    res.valid = load_data(paths.concat(path, "valid.txt"))
+    res.test = load_data(paths.concat(path, "test.txt"))
     return res
 end
