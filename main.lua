@@ -199,13 +199,10 @@ function main()
 	state_train = {learning_rate=params.learning_rate}
     local valid = replicate(datasets.valid, params.batch_size)
 	state_valid = {data=valid:cuda()}
-    -- Original comment from Zaremba:
-    -- Intentionally we repeat dimensions without offseting.
-    -- Pass over this batch corresponds to the fully sequential processing.
+
 	print("Network parameters:")
 	print(params)
     reset_state(state_train)
-    reset_state(state_valid)
 	setup()
 
 	local epoch = 0
