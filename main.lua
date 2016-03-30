@@ -164,8 +164,8 @@ local function run_valid()
 	g_enable_dropout(model.rnns)
 end
 
-function run_test(model)
-    local test = datasets.test
+function run_test(model, corpus)
+    local test = corpus.test
     local test = test:resize(test:size(1), 1):expand(test:size(1), params.batch_size)
 	local state_test = {data=test:cuda()}
 	reset_state(state_test)
@@ -195,9 +195,10 @@ function main()
        print('Models will be saved after each epoch.')
     end
 
-    datasets = load_datasets(params)
+    corpus = Corpus(params.dataset, params.vocab_size)
+    corpus:load_datasets()
 	state_train = {learning_rate=params.learning_rate}
-    local valid = replicate(datasets.valid, params.batch_size)
+    local valid = replicate(corpus.valid, params.batch_size)
 	state_valid = {data=valid:cuda()}
 
 	print("Network parameters:")
@@ -210,10 +211,10 @@ function main()
 	local start_time = torch.tic()
 	print("Starting training.")
 	local words_per_step = params.seq_length * params.batch_size
-	local epoch_size = torch.floor(datasets.train:size(1) / words_per_step)
+	local epoch_size = torch.floor(corpus.train:size(1) / words_per_step)
 	local perps
     local chunk_size_in_batches = torch.floor(epoch_size / params.n_chunks)
-    local chunk_size_in_data = torch.floor(datasets.train:size(1) / params.n_chunks)
+    local chunk_size_in_data = torch.floor(corpus.train:size(1) / params.n_chunks)
 
 	while epoch < params.n_epochs do
         local step = 0
@@ -228,10 +229,10 @@ function main()
                 local first = chunk_size_in_data * chunk_index + 1
                 local last = first + chunk_size_in_data
                 -- make last chunk slightly longer to include last few words
-                if datasets.train:size(1) - last < params.n_chunks then
-                    last = datasets.train:size(1)
+                if corpus.train:size(1) - last < params.n_chunks then
+                    last = corpus.train:size(1)
                 end
-                local chunk = datasets.train[{{first, last}}]
+                local chunk = corpus.train[{{first, last}}]
                 state_train.data = replicate(chunk, params.batch_size):cuda()
                 chunk_index = chunk_index + 1
             end
@@ -273,7 +274,7 @@ function main()
         epoch = epoch + 1
 	end
     print("Calculating test set perplexity...")
-	run_test()
+	run_test(model, corpus)
 	print("Training is over.")
 end
 
