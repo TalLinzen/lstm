@@ -11,6 +11,7 @@ require('xlua')
 
 require('base')
 require('options')
+require('data')
 
 deviceParams = cutorch.getDeviceProperties(1)
 cudaComputeCapability = deviceParams.major + deviceParams.minor / 10
@@ -18,9 +19,8 @@ print('Cuda compute capability: ' .. cudaComputeCapability)
 
 local options = RNNOption()
 params = options:parse(arg)
-local data = require('data')
 
-local state_train, state_valid, state_test
+local state_train, state_valid
 local model = {}
 local paramx, paramdx
 
@@ -149,7 +149,7 @@ local function backward_pass(state)
 		local shrink_factor = params.max_grad_norm / model.norm_dw
 		paramdx:mul(shrink_factor)
 	end
-	paramx:add(paramdx:mul(-params.learning_rate))
+	paramx:add(paramdx:mul(-state.learning_rate))
 end
 
 local function run_valid()
@@ -164,12 +164,16 @@ local function run_valid()
 	g_enable_dropout(model.rnns)
 end
 
-local function run_test()
+function run_test(model)
+    local test = datasets.test
+    local test = test:resize(test:size(1), 1):expand(test:size(1), params.batch_size)
+	local state_test = {data=test:cuda()}
 	reset_state(state_test)
 	g_disable_dropout(model.rnns)
 	local perp = 0
 	local len = state_test.data:size(1)
 	g_replace_table(model.s[0], model.start_s)
+    
 	for i = 1, (len - 1) do
 		local x = state_test.data[i]
 		local y = state_test.data[i + 1]
@@ -188,26 +192,22 @@ function main()
        if paths.dirp(params.save_dir) == false then
            os.execute('mkdir -p ' .. params.save_dir)
        end
-       print('*** models will be saved after each epoch ***')
+       print('Models will be saved after each epoch.')
     end
 
     datasets = load_datasets(params)
-	state_train = {}
+	state_train = {learning_rate=params.learning_rate}
     local valid = replicate(datasets.valid, params.batch_size)
 	state_valid = {data=valid:cuda()}
     -- Original comment from Zaremba:
     -- Intentionally we repeat dimensions without offseting.
     -- Pass over this batch corresponds to the fully sequential processing.
-    local test = datasets.test
-    local test = test:resize(test:size(1), 1):expand(test:size(1), params.batch_size)
-	state_test = {data=test:cuda()}
 	print("Network parameters:")
 	print(params)
-	local states = {state_train, state_valid, state_test}
-	for _, state in pairs(states) do
-		reset_state(state)
-	end
+    reset_state(state_train)
+    reset_state(state_valid)
 	setup()
+
 	local epoch = 0
 	local beginning_time = torch.tic()
 	local start_time = torch.tic()
@@ -224,7 +224,7 @@ function main()
 	    local epoch_start_time = torch.tic()
         local chunk_index = 0
         if epoch >= params.n_epochs_before_decay then
-            params.learning_rate = params.learning_rate / params.learning_rate_decay
+            state_train.learning_rate = state_train.learning_rate / params.learning_rate_decay
         end
         while chunk_index < params.n_chunks do
             if step % chunk_size_in_batches == 0 then
@@ -266,15 +266,22 @@ function main()
         run_valid()
         if params.save_dir ~= nil then
             print 'Saving model to disk...\n'
-            local save_state = {}
-            save_state.learning_rate = learning_rate
-            save_state.learning_rate_decay = params.learning_rate_decay
+            local serialized = {}
+            serialized.model = model
+            serialized.current_learning_rate = state_train.learning_rate
+            serialized.params = params
             local filename = 'model_' .. torch.floor(epoch)
-            torch.save(paths.concat(params.save_dir, filename), save_state)
+            torch.save(paths.concat(params.save_dir, filename), serialized)
         end
         epoch = epoch + 1
 	end
     print("Calculating test set perplexity...")
 	run_test()
 	print("Training is over.")
+end
+
+function load_model(epoch)
+    local filename = 'model_' .. torch.floor(epoch)
+    serialized = torch.load(paths.concat(params.save_dir, filename))
+    return(serialized)
 end
