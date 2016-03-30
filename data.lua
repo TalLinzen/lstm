@@ -29,6 +29,26 @@ function replicate(x_inp, batch_size)
     return x
 end
 
+function encode_line(line, x, i)
+    local words = stringx.split(line)
+    local unk_tokens = 0
+
+    for k = 1, #words do
+        if vocab_map[words[k]] == nil then
+            x[i] = unk
+            unk_tokens = unk_tokens + 1
+        else
+            x[i] = vocab_map[words[k]]
+            if x[i] == unk then
+                unk_tokens = unk_tokens + 1
+            end
+        end
+        i = i + 1
+    end
+
+    return unk_tokens, #words
+end
+
 local function load_data(fname, params, fixed_vocab)
     local word_count = 0
     for line in io.lines(fname) do
@@ -74,19 +94,9 @@ local function load_data(fname, params, fixed_vocab)
     local unk_tokens = 0
 
     for line in io.lines(fname) do
-        local words = stringx.split(line)
-        for k = 1, #words do
-            if vocab_map[words[k]] == nil then
-                x[i] = unk
-                unk_tokens = unk_tokens + 1
-            else
-                x[i] = vocab_map[words[k]]
-                if x[i] == unk then
-                    unk_tokens = unk_tokens + 1
-                end
-            end
-            i = i + 1
-        end
+        ut, nwords = encode_line(line, x, i)
+        i = i + nwords
+        unk_tokens = unk_tokens + ut
     end
 
     print('Loaded dataset ' .. fname .. ' (' .. word_count .. ' words)')
