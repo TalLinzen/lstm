@@ -12,92 +12,17 @@ require('xlua')
 require('base')
 require('options')
 require('data')
+require('model')
 
 deviceParams = cutorch.getDeviceProperties(1)
 cudaComputeCapability = deviceParams.major + deviceParams.minor / 10
 print('Cuda compute capability: ' .. cudaComputeCapability)
 
-local options = RNNOption()
+local options = Options()
 params = options:parse(arg)
 
 local state_train, state_valid
 local model = {}
-local paramx, paramdx
-
-local function lstm(x, prev_c, prev_h)
-	-- Calculate all four gates in one go
-	local i2h = nn.Linear(params.n_hidden, 4 * params.n_hidden)(x)
-	local h2h = nn.Linear(params.n_hidden, 4 * params.n_hidden)(prev_h)
-	local gates = nn.CAddTable()({i2h, h2h})
-	
-	-- Reshape to (batch_size, n_gates, hid_size)
-	-- Then slize the n_gates dimension, i.e dimension 2
-	local reshaped_gates =	nn.Reshape(4,params.n_hidden)(gates)
-	local sliced_gates = nn.SplitTable(2)(reshaped_gates)
-	
-	-- Use select gate to fetch each gate and apply nonlinearity
-	local in_gate = nn.Sigmoid()(nn.SelectTable(1)(sliced_gates))
-	local in_transform = nn.Tanh()(nn.SelectTable(2)(sliced_gates))
-	local forget_gate = nn.Sigmoid()(nn.SelectTable(3)(sliced_gates))
-	local out_gate = nn.Sigmoid()(nn.SelectTable(4)(sliced_gates))
-
-	local next_c = nn.CAddTable()({
-		nn.CMulTable()({forget_gate, prev_c}),
-		nn.CMulTable()({in_gate, in_transform})
-	})
-	local next_h = nn.CMulTable()({out_gate, nn.Tanh()(next_c)})
-
-	return next_c, next_h
-end
-
-local function create_network()
-	local x = nn.Identity()()
-	local y = nn.Identity()()
-	local prev_s = nn.Identity()()
-	local i = {[0] = nn.LookupTable(params.vocab_size, params.n_hidden)(x)}
-	local next_s = {}
-	local split	= {prev_s:split(2 * params.layers)}
-
-	for layer_idx = 1, params.layers do
-		local prev_c = split[2 * layer_idx - 1]
-		local prev_h = split[2 * layer_idx]
-		local dropped = nn.Dropout(params.dropout)(i[layer_idx - 1])
-		local next_c, next_h = lstm(dropped, prev_c, prev_h)
-		table.insert(next_s, next_c)
-		table.insert(next_s, next_h)
-		i[layer_idx] = next_h
-	end
-
-	local h2y = nn.Linear(params.n_hidden, params.vocab_size)
-	local dropped = nn.Dropout(params.dropout)(i[params.layers])
-	local pred = nn.LogSoftMax()(h2y(dropped))
-	local err = nn.ClassNLLCriterion()({pred, y})
-	local module = nn.gModule({x, y, prev_s}, {err, nn.Identity()(next_s)})
-	module:getParameters():uniform(-params.initial_weight, params.initial_weight)
-	return module:cuda()
-end
-
-local function setup()
-	local core_network = create_network()
-	paramx, paramdx = core_network:getParameters()
-	model.s = {}
-	model.ds = {}
-	model.start_s = {}
-	for j = 0, params.seq_length do
-		model.s[j] = {}
-		for d = 1, 2 * params.layers do
-			model.s[j][d] = torch.zeros(params.batch_size, params.n_hidden):cuda()
-		end
-	end
-	for d = 1, 2 * params.layers do
-		model.start_s[d] = torch.zeros(params.batch_size, params.n_hidden):cuda()
-		model.ds[d] = torch.zeros(params.batch_size, params.n_hidden):cuda()
-	end
-	model.core_network = core_network
-	model.rnns = g_cloneManyTimes(core_network, params.seq_length)
-	model.norm_dw = 0
-	model.err = torch.zeros(params.seq_length):cuda()
-end
 
 local function reset_state(state)
 	state.pos = 1
@@ -105,12 +30,6 @@ local function reset_state(state)
 		for d = 1, 2 * params.layers do
 			model.start_s[d]:zero()
 		end
-	end
-end
-
-local function reset_ds()
-	for d = 1, #model.ds do
-		model.ds[d]:zero()
 	end
 end
 
@@ -131,8 +50,8 @@ local function forward_pass(state)
 end
 
 local function backward_pass(state)
-	paramdx:zero()
-	reset_ds()
+	model.paramdx:zero()
+	model:reset_ds()
 	for i = params.seq_length, 1, -1 do
 		state.pos = state.pos - 1
 		local x = state.data[state.pos]
@@ -144,24 +63,24 @@ local function backward_pass(state)
 		cutorch.synchronize()
 	end
 	state.pos = state.pos + params.seq_length
-	model.norm_dw = paramdx:norm()
+	model.norm_dw = model.paramdx:norm()
 	if model.norm_dw > params.max_grad_norm then
 		local shrink_factor = params.max_grad_norm / model.norm_dw
-		paramdx:mul(shrink_factor)
+		model.paramdx:mul(shrink_factor)
 	end
-	paramx:add(paramdx:mul(-state.learning_rate))
+	model.paramx:add(model.paramdx:mul(-state.learning_rate))
 end
 
 local function run_valid()
 	reset_state(state_valid)
-	g_disable_dropout(model.rnns)
+    model:disable_dropout()
 	local len = (state_valid.data:size(1) - 1) / (params.seq_length)
 	local perp = 0
 	for i = 1, len do
 		perp = perp + forward_pass(state_valid)
 	end
 	print("\nValidation set perplexity: " .. g_f3(torch.exp(perp / len)))
-	g_enable_dropout(model.rnns)
+	model:enable_dropout()
 end
 
 function run_test(model, corpus)
@@ -169,7 +88,7 @@ function run_test(model, corpus)
     local test = test:resize(test:size(1), 1):expand(test:size(1), params.batch_size)
 	local state_test = {data=test:cuda()}
 	reset_state(state_test)
-	g_disable_dropout(model.rnns)
+    model:disable_dropout()
 	local perp = 0
 	local len = state_test.data:size(1)
 	g_replace_table(model.s[0], model.start_s)
@@ -182,7 +101,7 @@ function run_test(model, corpus)
 		g_replace_table(model.s[0], model.s[1])
 	end
 	print("Test set perplexity : " .. g_f3(torch.exp(perp / (len - 1))))
-	g_enable_dropout(model.rnns)
+    model:enable_dropout()
 end
 
 function main()
@@ -201,10 +120,13 @@ function main()
     local valid = replicate(corpus.valid, params.batch_size)
 	state_valid = {data=valid:cuda()}
 
+    model = Model(params.seq_length, params.n_hidden, params.layers,
+        params.batch_size, params.vocab_size, params.initial_weight,
+        params.dropout)
+
 	print("Network parameters:")
 	print(params)
     reset_state(state_train)
-	setup()
 
 	local epoch = 0
 	local beginning_time = torch.tic()
@@ -254,13 +176,13 @@ function main()
 
         -- End-of-epoch bookkeeping
         local wps = torch.floor(total_cases / torch.toc(epoch_start_time))
-        local since_beginning = g_d(torch.toc(beginning_time) / 60)
+        local minutes = torch.round(torch.toc(beginning_time) / 60)
         print('epoch = ' .. epoch ..
                     ', training perplexity = ' .. g_f3(torch.exp(perps:mean())) ..
                     ', word per second = ' .. wps ..
                     ', dw:norm() = ' .. g_f3(model.norm_dw) ..
                     ', learning_rate = ' ..  g_f3(params.learning_rate) ..
-                    ', time elapsed = ' .. since_beginning .. ' mins.')
+                    ', time elapsed = ' .. string.format('%d', minutes) .. ' mins.')
         run_valid()
         if params.save_dir ~= nil then
             print 'Saving model to disk...\n'

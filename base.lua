@@ -6,30 +6,6 @@
 --	LICENSE file in the root directory of this source tree. 
 --
 
-function g_disable_dropout(node)
-	if type(node) == "table" and node.__typename == nil then
-	for i = 1, #node do
-		node[i]:apply(g_disable_dropout)
-	end
-	return
-	end
-	if string.match(node.__typename, "Dropout") then
-	node.train = false
-	end
-end
-
-function g_enable_dropout(node)
-	if type(node) == "table" and node.__typename == nil then
-	for i = 1, #node do
-		node[i]:apply(g_enable_dropout)
-	end
-	return
-	end
-	if string.match(node.__typename, "Dropout") then
-	node.train = true
-	end
-end
-
 function g_cloneManyTimes(net, T)
 	local clones = {}
 	local params, gradParams = net:parameters()
@@ -74,8 +50,4 @@ end
 
 function g_f3(f)
 	return string.format("%.3f", f)
-end
-
-function g_d(f)
-	return string.format("%d", torch.round(f))
 end

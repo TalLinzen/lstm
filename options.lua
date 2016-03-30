@@ -12,7 +12,7 @@
 --          Tomas Mikolov <tmikolov@fb.com>
 --          Armand Joulin <ajoulin@fb.com>
 
--- This file contains a class RNNOption.
+-- This file contains a class Options.
 -- It parses the default options for RNNs and processes them.
 -- Custom options can be added using option, optionChoice and
 --   optionDisableIfNegative function.
@@ -21,10 +21,10 @@
 require('os')
 require('string')
 
-local RNNOption = torch.class('RNNOption')
+local Options = torch.class('Options')
 
 -- Init. Adds standard options.
-function RNNOption:__init()
+function Options:__init()
     self.cmd = torch.CmdLine()
     self.cmd.argseparator = '_'
     self.cmd:text()
@@ -88,7 +88,7 @@ end
 --    It be specialized to a subtable using a dot (eg. trainer.learning_rate)
 --  default: the default value
 --  process: a function to be applied to the parameter
-function RNNOption:option(cmd_option, param_name, default, help,
+function Options:option(cmd_option, param_name, default, help,
 process_function)
     process_function = process_function or function(x) return x end
     self.cmd:option(cmd_option, default, help)
@@ -101,7 +101,7 @@ end
 
 -- Adds an option expecting a string. If the option is not in the list
 -- <choices>, it raises an error.
-function RNNOption:optionChoice(cmd_option, param_name, default, help, choices)
+function Options:optionChoice(cmd_option, param_name, default, help, choices)
     local function f(x)
         for i = 1, #choices do
             if choices[i] == x then
@@ -116,7 +116,7 @@ function RNNOption:optionChoice(cmd_option, param_name, default, help, choices)
 end
 
 -- Adds an option expecting a number. It is replaced by nil if it is <= 0.
-function RNNOption:optionDisableIfNegative(cmd_option, param_name, default,
+function Options:optionDisableIfNegative(cmd_option, param_name, default,
                                            help)
     local function f(x)
         if x <= 0 then
@@ -129,15 +129,15 @@ function RNNOption:optionDisableIfNegative(cmd_option, param_name, default,
 end
 
 -- Changes the default value to an option.
-function RNNOption:change_default(cmd_option, new_default)
+function Options:change_default(cmd_option, new_default)
     if self.cmd.options[cmd_option] == nil then
-        error('RNNOption: trying to change default, but option '
+        error('Options: trying to change default, but option '
                   .. cmd_option .. ' does not exist')
     end
     self.cmd.options[cmd_option].default = new_default
 end
 
-function RNNOption:build_choices_string(choices)
+function Options:build_choices_string(choices)
     local out = '('
     for i = 1, #choices do
         if i ~= 1 then out = out .. '|' end
@@ -149,7 +149,7 @@ end
 -- Parses the command line. It returns a table containing :
 -- tables for the specialized options (eg. model, trainer, ...)
 -- and the global parameters (eg. cuda_device)
-function RNNOption:parse()
+function Options:parse()
     local opt = self.cmd:parse(arg)
     local params = {}
     for k, v in pairs(self.options) do
@@ -204,12 +204,12 @@ function RNNOption:parse()
 end
 
 -- prints the help
-function RNNOption:text()
+function Options:text()
     self.cmd:text()
 end
 
 -- prints the value of the parameters <params>
-function RNNOption:print_params(params)
+function Options:print_params(params)
     for k, v in pairs(params) do
         if type(v) == 'boolean' then
             if v then
