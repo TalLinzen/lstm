@@ -191,7 +191,7 @@ function main()
        print('*** models will be saved after each epoch ***')
     end
 
-    datasets = load_datasets(params.dataset)
+    datasets = load_datasets(params)
 	state_train = {}
     local valid = replicate(datasets.valid, params.batch_size)
 	state_valid = {data=valid:cuda()}
